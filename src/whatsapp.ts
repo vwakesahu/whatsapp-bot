@@ -13,6 +13,8 @@ export function initWhatsApp(onMessage: MessageHandler): pkg.Client {
     authStrategy: new LocalAuth(),
     puppeteer: {
       headless: true,
+      // On Raspberry Pi, use system-installed chromium instead of bundled x64 binary
+      ...(isRaspberryPi && { executablePath: '/usr/bin/chromium-browser' }),
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
