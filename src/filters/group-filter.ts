@@ -12,6 +12,12 @@ export function shouldProcess(message: Message): GroupFilterResult {
   }
 
   const chatId = message.from;
+
+  // Skip WhatsApp Status/Stories (status@broadcast)
+  if (chatId === 'status@broadcast') {
+    return { process: false, isIskcon: false };
+  }
+
   const isGroup = chatId.endsWith('@g.us');
 
   if (!isGroup) {

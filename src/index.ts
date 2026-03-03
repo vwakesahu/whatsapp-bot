@@ -11,6 +11,7 @@ import {
 } from './ai/conversation.ts';
 import { getResponse, type ActionJson } from './ai/claude.ts';
 import { sendNotification } from './notifications/ntfy.ts';
+import { updateConversationStatus } from './db/sqlite.ts';
 import config from './config.ts';
 import type { Message } from 'whatsapp-web.js';
 
@@ -32,7 +33,7 @@ async function handleMessage(message: Message): Promise<void> {
   const body = (message.body ?? '').trim();
   const senderId = message.from;
 
-  // LAYER 0: Channel filter
+  // LAYER 0: Channel filter (groups, own messages, status/stories)
   const { process: shouldContinue, isIskcon } = shouldProcess(message);
   if (!shouldContinue) return;
 
@@ -67,16 +68,27 @@ async function handleMessage(message: Message): Promise<void> {
     return;
   }
 
-  // LAYER 2: Greeting detection (shapes response, doesn't block)
+  // LAYER 2: Conversation context
+  const ctx = getOrCreateConversationContext(senderId, senderName);
+
+  // If conversation is paused (Vivek is handling it), don't auto-reply
+  if (ctx.conversation.status === 'paused') {
+    console.log(`[gatekeeper] Conversation paused for ${senderName}, skipping auto-reply`);
+    // Still notify for new messages in paused conversations
+    await sendNotification({
+      senderName,
+      action: { notify: true, urgency: 'medium', needs_meeting: false, summary: `Follow-up: ${body.slice(0, 100)}`, mode: 'paused' },
+    });
+    return;
+  }
+
+  // Greeting detection (shapes response, doesn't block)
   const greeting = detectGreeting(body);
   if (greeting.isGreeting) {
     console.log('[gatekeeper] Greeting detected');
   }
 
-  // LAYER 3: Conversation + Claude
-  const ctx = getOrCreateConversationContext(senderId, senderName);
-
-  // Check whitelist — family always notify
+  // LAYER 3: Claude
   const whitelisted = isWhitelisted(senderId);
 
   // Record user message
@@ -98,12 +110,17 @@ async function handleMessage(message: Message): Promise<void> {
   await message.reply(reply);
   console.log(`[gatekeeper] Replied to ${senderName}: ${reply.slice(0, 80)}`);
 
+  // If paused mode — mark conversation so bot stops replying to this sender
+  if (finalAction.mode === 'paused') {
+    updateConversationStatus(ctx.conversation.id, 'paused');
+    console.log(`[gatekeeper] Conversation PAUSED for ${senderName} — Vivek takes over`);
+  }
+
   // Send notification if needed
   if (finalAction.notify) {
     await sendNotification({ senderName, action: finalAction });
   }
 
-  // Log action
   console.log(`[gatekeeper] Action: notify=${finalAction.notify}, urgency=${finalAction.urgency}, mode=${finalAction.mode}`);
 }
 

@@ -9,7 +9,7 @@ export interface ActionJson {
   urgency: 'high' | 'medium' | 'low' | 'none';
   needs_meeting: boolean;
   summary: string;
-  mode: 'normal' | 'savage';
+  mode: 'normal' | 'savage' | 'paused';
 }
 
 export interface ClaudeResponse {

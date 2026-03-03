@@ -151,7 +151,7 @@ export function getActiveConversation(phone: string): ConversationRow | null {
   const windowHours = config.conversation.newWindowHours;
   return getDB().prepare(
     `SELECT * FROM conversations
-     WHERE contact_phone = ? AND status IN ('new', 'active', 'qualified')
+     WHERE contact_phone = ? AND status IN ('new', 'active', 'qualified', 'paused')
        AND updated_at > datetime('now', ?)
      ORDER BY updated_at DESC LIMIT 1`
   ).get(phone, `-${windowHours} hours`) as ConversationRow | null;
