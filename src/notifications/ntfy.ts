@@ -1,5 +1,6 @@
 import config from '../config.ts';
 import type { ActionJson } from '../ai/claude.ts';
+import { withRetry } from '../utils/retry.ts';
 
 interface NotificationPayload {
   senderName: string;
@@ -27,21 +28,24 @@ export async function sendNotification({ senderName, action }: NotificationPaylo
 
   try {
     const url = `${config.ntfyServer}/${config.ntfyTopic}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Title: title,
-        Priority: String(priority),
-        Tags: tags,
+    await withRetry(
+      async () => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Title: title,
+            Priority: String(priority),
+            Tags: tags,
+          },
+          body: action.summary || `New message from ${senderName}`,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+        return res;
       },
-      body: action.summary || `New message from ${senderName}`,
-    });
+      { label: 'ntfy' }
+    );
 
-    if (!response.ok) {
-      console.error('[ntfy] Failed to send:', response.status, await response.text());
-    } else {
-      console.log(`[ntfy] Notification sent: ${title} — ${action.summary}`);
-    }
+    console.log(`[ntfy] Notification sent: ${title} — ${action.summary}`);
   } catch (error) {
     console.error('[ntfy] Error sending notification:', error);
   }

@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import config from '../config.ts';
 import type { MessageRow } from '../db/sqlite.ts';
+import { withRetry } from '../utils/retry.ts';
 
 const client = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -62,12 +63,15 @@ export async function getResponse(
       { role: 'user' as const, content: newMessage },
     ];
 
-    const response = await client.messages.create({
-      model: config.claudeModel,
-      max_tokens: 300,
-      system: systemPrompt,
-      messages,
-    });
+    const response = await withRetry(
+      () => client.messages.create({
+        model: config.claudeModel,
+        max_tokens: 300,
+        system: systemPrompt,
+        messages,
+      }),
+      { label: 'claude' }
+    );
 
     const fullText = response.content
       .filter(block => block.type === 'text')

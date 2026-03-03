@@ -12,6 +12,7 @@ import {
 import { getResponse, type ActionJson } from './ai/claude.ts';
 import { sendNotification } from './notifications/ntfy.ts';
 import { updateConversationStatus } from './db/sqlite.ts';
+import { withRetry } from './utils/retry.ts';
 import config from './config.ts';
 import type { Message } from 'whatsapp-web.js';
 
@@ -52,7 +53,7 @@ async function handleMessage(message: Message): Promise<void> {
   if (spamVerdict !== 'ok') {
     console.log(`[gatekeeper] Spam filtered: ${spamVerdict}`);
     const reply = getSpamReply(spamVerdict);
-    if (reply) await message.reply(reply);
+    if (reply) await withRetry(() => message.reply(reply), { label: 'wa-reply' });
     return;
   }
 
@@ -107,7 +108,7 @@ async function handleMessage(message: Message): Promise<void> {
   recordAssistantMessage(ctx.conversation.id, reply, JSON.stringify(finalAction));
 
   // Send reply on WhatsApp
-  await message.reply(reply);
+  await withRetry(() => message.reply(reply), { label: 'wa-reply' });
   console.log(`[gatekeeper] Replied to ${senderName}: ${reply.slice(0, 80)}`);
 
   // If paused mode — mark conversation so bot stops replying to this sender
@@ -130,7 +131,7 @@ async function handleIskconMessage(message: Message, body: string, senderName: s
   const systemPrompt = getIskconSystemPrompt();
   const { reply, action } = await getResponse([], systemPrompt, body);
 
-  await message.reply(reply);
+  await withRetry(() => message.reply(reply), { label: 'wa-reply' });
   console.log(`[gatekeeper] ISKCON reply: ${reply.slice(0, 80)}`);
 
   if (action.notify) {
