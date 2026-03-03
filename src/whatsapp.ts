@@ -47,8 +47,11 @@ export function initWhatsApp(onMessage: MessageHandler): pkg.Client {
     client.initialize();
   });
 
+  // Use 'message_create' to catch all messages, but filter properly
   client.on('message', async (message: pkg.Message) => {
     try {
+      // Early exit for status/story updates at the listener level
+      if (message.from === 'status@broadcast' || message.isStatus) return;
       await onMessage(message);
     } catch (error) {
       console.error('[whatsapp] Error handling message:', error);

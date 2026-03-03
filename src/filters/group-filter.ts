@@ -13,8 +13,15 @@ export function shouldProcess(message: Message): GroupFilterResult {
 
   const chatId = message.from;
 
-  // Skip WhatsApp Status/Stories (status@broadcast)
-  if (chatId === 'status@broadcast') {
+  // Skip WhatsApp Status/Stories — can arrive as status@broadcast or as
+  // a broadcast flag or as an `is_status` type on the underlying data
+  if (
+    chatId === 'status@broadcast' ||
+    message.isStatus ||
+    (message as any).isStatusV3 ||
+    (message as any)._data?.isStatusV3 ||
+    message.broadcast
+  ) {
     return { process: false, isIskcon: false };
   }
 
