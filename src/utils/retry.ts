@@ -4,11 +4,32 @@ const NETWORK_ERRORS = [
   'fetch failed', 'network error', 'socket hang up',
 ];
 
-export function isNetworkError(error: unknown): boolean {
+// HTTP status codes that are safe to retry
+const RETRYABLE_STATUS_CODES = [429, 500, 502, 503, 504, 529];
+
+export function isRetryableError(error: unknown): boolean {
   if (!error) return false;
+
+  // Check for network-level errors
   const msg = String((error as any)?.message ?? error).toLowerCase();
   const code = (error as any)?.code ?? '';
-  return NETWORK_ERRORS.some(e => msg.includes(e.toLowerCase()) || code === e);
+  if (NETWORK_ERRORS.some(e => msg.includes(e.toLowerCase()) || code === e)) {
+    return true;
+  }
+
+  // Check for retryable HTTP status codes (Anthropic SDK throws with .status)
+  const status = (error as any)?.status;
+  if (status && RETRYABLE_STATUS_CODES.includes(status)) {
+    return true;
+  }
+
+  // Check x-should-retry header (Anthropic sets this)
+  const headers = (error as any)?.headers;
+  if (headers?.['x-should-retry'] === 'true') {
+    return true;
+  }
+
+  return false;
 }
 
 export async function withRetry<T>(
@@ -21,9 +42,12 @@ export async function withRetry<T>(
     try {
       return await fn();
     } catch (error) {
-      if (isNetworkError(error) && attempt < retries) {
-        const wait = delayMs * attempt;
-        console.warn(`[${label}] Network error (attempt ${attempt}/${retries}), retrying in ${wait / 1000}s...`);
+      if (isRetryableError(error) && attempt < retries) {
+        // Use longer delay for rate limits (429) and overloaded (529)
+        const status = (error as any)?.status;
+        const multiplier = (status === 429 || status === 529) ? 3 : 1;
+        const wait = delayMs * attempt * multiplier;
+        console.warn(`[${label}] Retryable error${status ? ` (${status})` : ''} — attempt ${attempt}/${retries}, retrying in ${wait / 1000}s...`);
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
@@ -31,6 +55,5 @@ export async function withRetry<T>(
     }
   }
 
-  // Unreachable, but TypeScript needs it
   throw new Error(`[${label}] All ${retries} attempts failed`);
 }
